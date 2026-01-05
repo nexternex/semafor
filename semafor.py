@@ -51,4 +51,18 @@ try:
     with c2:
         st.metric("Cena zlata (gram)", f"{g_gram:.2f} €")
 
-    if
+    if ratio > 85:
+        st.warning("⚠️ **OPASNOST:** Istorijski gledano, ovaj odnos zlata i srebra najavljuje pucanje tržišta nekretnina.")
+    else:
+        st.success("✅ Tržište je trenutno stabilno u odnosu na plemenite metale.")
+
+    # --- SEKCIJA 3: ISTORIJSKI KONTEKST ---
+    st.info(f"""
+    **Istorijski reper za Pančevo:**
+    * **2008:** Za stan od 55m2 trebalo je **2.300g** zlata.
+    * **Danas:** Treba ti oko **{potrebno_zlata_grama:.0f}g** zlata.
+    * *Zaključak:* Iako su cene u evrima rekordne, stanovi u Pančevu su zapravo **jeftiniji u zlatu** nego pre 15 godina.
+    """)
+
+except Exception as e:
+    st.error(f"Sistem trenutno ne može da povuče podatke. Proveri internet vezu. (Greška: {e})")
