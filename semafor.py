@@ -66,4 +66,7 @@ try:
     st.subheader("📈 Dugoročni trend zlata (USD/oz)")
     fig_gold = go.Figure(go.Scatter(x=gold_data.index, y=gold_data.values, line=dict(color='gold')))
     fig_gold.update_layout(template="plotly_dark")
-    st.plotly_chart(fig_gold, use_container_
+    st.plotly_chart(fig_gold, use_container_width=True)
+
+except Exception as e:
+    st.error(f"Greška: {e}")
