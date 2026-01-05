@@ -3,70 +3,99 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# 1. OSNOVNA PODEŠAVANJA
-st.set_page_config(page_title="Pančevo Sentinel 2026", layout="wide")
+st.set_page_config(page_title="Pančevo Sentinel 2026 - Ultra", layout="wide")
 
-# 2. POMOĆNA FUNKCIJA ZA PODATKE
 @st.cache_data(ttl=3600)
-def fetch_all():
-    # Uzimamo Zlato, Srebro i Kurs EUR/USD
-    gold = yf.Ticker("GC=F").history(period="max")['Close']
-    silver = yf.Ticker("SI=F").history(period="max")['Close']
-    eurusd = yf.Ticker("EURUSD=X").history(period="1d")['Close'].iloc[-1]
-    
-    live_gold_price = gold.iloc[-1]
-    live_gram_eur = (live_gold_price / eurusd) / 31.1035
-    ratio = live_gold_price / silver.iloc[-1]
-    
-    # Istorija Pančeva
-    hist_data = {
-        'Godina': [2000, 2008, 2012, 2019, 2023, 2026],
-        'Cena_m2': [300, 850, 700, 900, 1450, 1850],
-        'Gram_EUR': [10, 20, 42, 44, 60, live_gram_eur]
+def get_advanced_data():
+    # Povlačenje podataka: Zlato, Srebro, Bakar (Copper), EUR/USD
+    tickers = {
+        'Gold': 'GC=F',
+        'Silver': 'SI=F',
+        'Copper': 'HG=F',
+        'EURUSD': 'EURUSD=X'
     }
-    df = pd.DataFrame(hist_data)
-    df['Stan_u_Zlatu'] = (df['Cena_m2'] * 55) / df['Gram_EUR']
     
-    return gold, df, ratio, live_gram_eur
+    raw_data = {}
+    for name, sym in tickers.items():
+        raw_data[name] = yf.Ticker(sym).history(period="5y")['Close']
+    
+    # Proračuni
+    gs_ratio = raw_data['Gold'] / raw_data['Silver']
+    copper_gold_ratio = raw_data['Copper'] / (raw_data['Gold'] / 100) # Normalizovano radi pregleda
+    live_gram_eur = (raw_data['Gold'].iloc[-1] / raw_data['EURUSD'].iloc[-1]) / 31.1035
+    
+    return raw_data, gs_ratio, copper_gold_ratio, live_gram_eur
 
-# 3. GLAVNI PROGRAM
 try:
-    gold_data, df_hist, gs_ratio, live_gram = fetch_all()
+    data, gs_ratio, cg_ratio, live_gram = get_advanced_data()
 
-    st.title("🛡️ Pančevo Economic Sentinel")
-    st.write(f"Osveženo: {pd.Timestamp.now().strftime('%d.%m.%2026. %H:%M')}")
+    st.title("🛡️ Pančevo Sentinel: Totalni Market Monitor")
+    st.markdown(f"**Analiza rizika za Pančevo i globalna tržišta** | {pd.Timestamp.now().strftime('%d.%m.%2026.')}")
 
-    # STRES SEKCIJA
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Gold/Silver Ratio", f"{gs_ratio:.2f}")
-    col2.metric("Zlato (EUR/g)", f"{live_gram:.2f} €")
+    # --- SEKCIJA 1: ALARMI (MARKERI) ---
+    col1, col2, col3, col4 = st.columns(4)
     
-    status = "🔴 RIZIK" if gs_ratio > 80 else "🟢 OK"
-    col3.metric("Status Sistema", status)
+    curr_gs = gs_ratio.iloc[-1]
+    curr_cg = cg_ratio.iloc[-1]
+    
+    col1.metric("Gold/Silver Ratio", f"{curr_gs:.2f}", delta="ALARM" if curr_gs > 85 else "OK", delta_color="inverse")
+    col2.metric("Copper/Gold Ratio", f"{curr_cg:.2f}", delta="PAD INDUSTRIJE" if curr_cg < cg_ratio.mean() else "OK", delta_color="inverse")
+    col3.metric("Zlato (EUR/g)", f"{live_gram:.2f} €")
+    
+    # Izračunavanje ukupnog nivoa stresa (0-100)
+    stress_score = 0
+    if curr_gs > 80: stress_score += 40
+    if curr_gs > 90: stress_score += 20
+    if curr_cg < cg_ratio.mean(): stress_score += 40
+    
+    col4.metric("Market Stress Index", f"{stress_score}%", delta="KRITIČNO" if stress_score > 70 else "PRATI")
 
-    # KALKULATOR I GRAFIKON
     st.divider()
-    c_left, c_right = st.columns([1, 2])
+
+    # --- SEKCIJA 2: GRAFIKONI SA KRITIČNIM MARKERIMA ---
+    st.subheader("📊 Vizuelni Markeri Rizika")
+    
+    tab1, tab2 = st.tabs(["Gold/Silver (Strah)", "Copper/Gold (Recesija)"])
+    
+    with tab1:
+        fig_gs = go.Figure()
+        fig_gs.add_trace(go.Scatter(x=gs_ratio.index, y=gs_ratio.values, name="GSR Ratio", line=dict(color='orange')))
+        # Dodavanje kritične linije (Marker)
+        fig_gs.add_hline(y=85, line_dash="dash", line_color="red", annotation_text="CRVENA ZONA (85)")
+        fig_gs.update_layout(template="plotly_dark", height=400, title="Istorijski Gold/Silver Ratio")
+        st.plotly_chart(fig_gs, use_container_width=True)
+        st.caption("Kada je narandžasta linija iznad isprekidane crvene, tržište je u stanju ekstremnog straha.")
+
+    with tab2:
+        fig_cg = go.Figure()
+        fig_cg.add_trace(go.Scatter(x=cg_ratio.index, y=cg_ratio.values, name="Dr. Copper/Gold", line=dict(color='cyan')))
+        fig_cg.update_layout(template="plotly_dark", height=400, title="Bakar/Zlato (Indikator privredne aktivnosti)")
+        st.plotly_chart(fig_cg, use_container_width=True)
+        st.caption("Pad ove linije znači da industrija (Bakar) slabi, dok zlato preuzima primat. To je klasičan uvod u pad nekretnina.")
+
+    st.divider()
+
+    # --- SEKCIJA 3: LOKALNI KALKULATOR (PANČEVO) ---
+    st.header("🏠 Pančevo Real-Value Tracker")
+    c_left, c_right = st.columns([1, 1])
     
     with c_left:
-        st.subheader("🏠 Kalkulator")
-        m2_cena = st.number_input("Cena kvadrata (€):", value=1850)
-        kvadratura = st.slider("Površina stana:", 20, 120, 55)
-        ukupno = m2_cena * kvadratura
-        u_gramima = ukupno / live_gram
-        st.write(f"Vrednost stana: **{ukupno:,.0f} €**")
-        st.write(f"U zlatu: **{u_gramima:.2f} g**")
-
+        cena_m2 = st.number_input("Trenutna cena kvadrata u Pančevu (€):", value=1850)
+        kvadrata = st.slider("Veličina stana:", 20, 150, 55)
+        ukupno_eur = cena_m2 * kvadrata
+        u_zlatu = ukupno_eur / live_gram
+        
+        st.write(f"Vrednost u evrima: **{ukupno_eur:,.0f} €**")
+        st.write(f"Vrednost u zlatu: **{u_zlatu:.2f} grama**")
+        
     with c_right:
-        fig_hist = go.Figure(go.Bar(x=df_hist['Godina'], y=df_hist['Stan_u_Zlatu'], marker_color='orange'))
-        fig_hist.update_layout(title="Potrebno grama zlata za stan (Pančevo)", template="plotly_dark", height=300)
-        st.plotly_chart(fig_hist, use_container_width=True)
-
-    # VELIKI GRAFIKON ZLATA
-    st.subheader("📈 Dugoročni trend zlata (USD/oz)")
-    fig_gold = go.Figure(go.Scatter(x=gold_data.index, y=gold_data.values, line=dict(color='gold')))
-    fig_gold.update_layout(template="plotly_dark")
-    st.plotly_chart(fig_gold, use_container_width=True)
+        # Analiza u odnosu na 'Dr. Bakra'
+        st.info(f"""
+        **Analiza za Pančevo:**
+        Trenutno je tržište pod pritiskom. Dok god je **GSR iznad 80**, 
+        investiranje u nove kvadrate nosi rizik od brze korekcije. 
+        Zadrži likvidnost u zlatu dok se GSR ne vrati ispod 70.
+        """)
 
 except Exception as e:
-    st.error(f"Greška: {e}")
+    st.error(f"Greška pri ažuriranju markera: {e}")
