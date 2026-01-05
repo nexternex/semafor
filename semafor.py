@@ -2,56 +2,53 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-# Podešavanje stranice
-st.set_page_config(page_title="Pančevo Stress Monitor", page_icon="📈")
+# Podešavanja aplikacije
+st.set_page_config(page_title="Pančevo Gold-House Tracker", page_icon="🏢")
 
-st.title("🛡️ Finansijski Stress Monitor v1.0")
-st.markdown("Prati signale 'Velikog preloma' u realnom vremenu.")
-
-# Funkcija za povlačenje podataka
 @st.cache_data(ttl=3600)
-def get_data():
-    gold = yf.Ticker("GC=F").history(period="1y")['Close']
-    silver = yf.Ticker("SI=F").history(period="1y")['Close']
-    tnx = yf.Ticker("^TNX").history(period="1y")['Close'] # 10Y Yield
-    irx = yf.Ticker("^IRX").history(period="1y")['Close'] # 13W Yield (zamena za 2Y)
-    return gold, silver, tnx, irx
+def get_market_data():
+    # Povlačenje unce zlata u EUR (GC=F je u USD, pretvaramo preko EURUSD=X)
+    gold_usd = yf.Ticker("GC=F").history(period="1d")['Close'].iloc[-1]
+    eur_usd = yf.Ticker("EURUSD=X").history(period="1d")['Close'].iloc[-1]
+    gold_eur_ounce = gold_usd / eur_usd
+    gold_eur_gram = gold_eur_ounce / 31.1035
+    
+    # Srebro za ratio
+    silver_usd = yf.Ticker("SI=F").history(period="1d")['Close'].iloc[-1]
+    gs_ratio = gold_usd / silver_usd
+    
+    return gold_eur_ounce, gold_eur_gram, gs_ratio
+
+st.title("🏢 Pančevo: Nekretnine vs Zlato")
+st.markdown(f"**Datum:** {pd.Timestamp.now().strftime('%d.%m.%2026.')}")
 
 try:
-    gold, silver, tnx, irx = get_data()
-    
-    # 1. Gold/Silver Ratio
-    gs_ratio = gold.iloc[-1] / silver.iloc[-1]
-    
-    # 2. Yield Curve (10Y - 3M)
-    yield_spread = tnx.iloc[-1] - irx.iloc[-1]
+    g_ounce, g_gram, ratio = get_market_data()
 
-    # Kolone za metriku
-    col1, col2 = st.columns(2)
+    # --- SEKCIJA 1: KALKULATOR ZA PANČEVO ---
+    st.header("🧮 Kalkulator Vrednosti")
     
-    with col1:
-        st.metric("Gold/Silver Ratio", f"{gs_ratio:.2f}", 
-                  delta="- Opasno" if gs_ratio > 85 else "Normalno", delta_color="inverse")
-        
-    with col2:
-        st.metric("Yield Curve Spread", f"{yield_spread:.2f}%", 
-                  delta="RECESIJA" if yield_spread < 0 else "OK")
+    # Prosečne vrednosti za Pančevo 2026
+    kvadrat_eur = st.number_input("Cena kvadrata u Pančevu (€):", value=1750)
+    povrsina = st.slider("Površina stana (m2):", 20, 120, 55)
+    
+    ukupna_cena_eur = kvadrat_eur * povrsina
+    potrebno_zlata_grama = ukupna_cena_eur / g_gram
+    potrebno_zlata_unci = ukupna_cena_eur / g_ounce
 
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Ukupno EUR", f"{ukupna_cena_eur:,.0f}€")
+    col2.metric("Vrednost u zlatu", f"{potrebno_zlata_unci:.2f} oz")
+    col3.metric("U gramima", f"{potrebno_zlata_grama:.0f} g")
+
+    # --- SEKCIJA 2: STRES INDIKATORI ---
     st.divider()
+    st.header("🚨 Stress Signali")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("Gold/Silver Ratio", f"{ratio:.2f}", delta="- Visok rizik" if ratio > 85 else "Normalno", delta_color="inverse")
+    with c2:
+        st.metric("Cena zlata (gram)", f"{g_gram:.2f} €")
 
-    # Analiza i preporuka
-    st.subheader("📊 Analiza Rizika")
-    if gs_ratio > 85 or yield_spread < 0:
-        st.error("🚨 VISOK RIZIK: Istorijski parametri ukazuju na nestabilnost sistema.")
-        st.write("**Savet:** Razmisli o prebacivanju dela kapitala u fizičko zlato. Nekretnine u Pančevu mogu postati nelikvidne.")
-    else:
-        st.success("✅ SISTEM STABILAN: Parametri su u granicama normale.")
-
-    # Grafikon zlata
-    st.subheader("Cena zlata (zadnjih godinu dana)")
-    st.line_chart(gold)
-
-except Exception as e:
-    st.error(f"Greška pri učitavanju podataka: {e}")
-
-st.caption("Podaci se ažuriraju automatski sa Yahoo Finance.")
+    if
